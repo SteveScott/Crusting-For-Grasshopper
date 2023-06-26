@@ -80,6 +80,7 @@ namespace Crusting
                 {
                     foreach (Point3d k in inputPoints)
                     {
+                        //because it is the order of N^3, we need to reduce the number of points to look at by omitting obviously large triangles that are far apart.
                         if (i != j && j != k && k != i && i.DistanceTo(j) < maxDistance && j.DistanceTo(k) < maxDistance)
                         {
                             var thesePoints = new List<Point3d>();
@@ -91,7 +92,7 @@ namespace Crusting
                             //generate a sphere formed by the three points.
                             Rhino.Geometry.Brep thisSphere = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints).ToBrep();
                             foreach (Point3d p in inputPoints)
-                            {
+                            {//the points in the triangle should not be included, or nothing will come of it.
                                 if (p == i || p == j || p == k)
                                     { continue; }   
                                 //if there are points inside the sphere, it is not the crust. Do not add geometry
@@ -100,27 +101,13 @@ namespace Crusting
                                     isInside = true;
                                     break;
                                 }
-
                             }
 
                             if (!isInside)
                             //it is a crust. Add the face
                             {
-                                /*
-                                
-                                answer.Vertices.AddVertices(thesePoints);
-
-                              
-                                var edges = new List<List<Rhino.Geometry.Point3d>>();
-                                edges.Add(new List<Point3d> { i, j });
-                                edges.Add(new List<Point3d> { i, k });
-                                edges.Add(new List<Point3d> { j, k });
-                                var plane = new Rhino.Geometry.Plane(i, j, k);
-                                var mesh = Rhino.Geometry.Mesh.CreateFromTessellation(thesePoints, edges, plane, false);
-                                */
                                 Mesh thisTriangle = new Triangle3d(i, j, k).ToMesh();
                                 outputMeshes.Add(thisTriangle);
-
                             }
                         }
                     }
@@ -132,10 +119,7 @@ namespace Crusting
                 answer.Append(mesh);
             }
             //Debug.Assert(answer.IsValid);
-            DA.SetData(0, answer);
-
-
-            
+            DA.SetData(0, answer); 
         }
 
         /// <summary>
