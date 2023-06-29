@@ -59,19 +59,16 @@ namespace Crusting
             if (!DA.GetDataList(1, inputPoints)) return ;
             if(!DA.GetData(2, ref maxDistance)) { maxDistance = double.PositiveInfinity; };
             foreach (Mesh t in inputCells) 
-            {
-
-                    
+            {  
                 MeshFaceList faces = t.Faces;
                 var vs = t.Vertices;
-               
-                for (int i = 0; i < faces.Count; i++)
+
+                foreach (var face in t.Faces) 
                 {
-                   var f =  faces.GetFace(i);
-                   var firstPoint = vs[f.A];
-                   var secondPoint = vs[f.B];
-                   var thirdPoint = vs[f.C];
-                    Debug.Assert(firstPoint is Point3d);
+                   var firstPoint = vs[face.A];
+                   var secondPoint = vs[face.B];
+                   var thirdPoint = vs[face.C];
+                   Debug.Assert(firstPoint.GetType() == typeof(Point3d), "point is not a Point3d");
                    if (firstPoint.DistanceTo(secondPoint) < maxDistance && secondPoint.DistanceTo(thirdPoint) < maxDistance)
                     {
                         continue;
