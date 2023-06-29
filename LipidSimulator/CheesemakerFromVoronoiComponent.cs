@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Net;
 using Grasshopper.GUI;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Geometry;
@@ -34,6 +35,7 @@ namespace Crusting
         {
             pManager.AddMeshParameter("cells", "C", "a collection of tetrahedron cells from the delauney triangulation", GH_ParamAccess.list);
             pManager.AddPointParameter("input", "P", "input points from the delauney cells", GH_ParamAccess.list);
+            pManager.AddNumberParameter("maxD", "D", "maximum length of a side of a triangle", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -53,10 +55,11 @@ namespace Crusting
 
             List<Mesh> inputCells = new List<Mesh>();
             List<Point3d> inputPoints = new List<Point3d>();
-            double maxDistance = double.PositiveInfinity;
+            double maxDistance = 0;
             var outputMeshes = new List<Mesh>();
             if (!DA.GetDataList(0, inputCells)) return ;
             if (!DA.GetDataList(1, inputPoints)) return ;
+            if (!DA.GetData(2, ref  maxDistance)) return ;
             foreach (Mesh t in inputCells) 
             {  
                 MeshFaceList faces = t.Faces;
@@ -110,10 +113,15 @@ namespace Crusting
                 List<Point3d> thesePoints = new List<Point3d>() { firstPoint, secondPoint, thirdPoint, offsetA, offsetB, offsetC };
                 bool isInside = false;
                 Brep thisSphere2 = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints).ToBrep();
+
                 foreach (Point3d p in inputPointsLocal)
-                {//the points in the triangle should not be included, or nothing will come of it.
-                    if (p.DistanceTo(firstPoint) < 0.1 && p.DistanceTo(secondPoint) < 0.1 || p.DistanceTo(thirdPoint) < 0.1)
+                {
+                    if ((firstPoint.DistanceTo(secondPoint) > maxDistance) || (secondPoint.DistanceTo(thirdPoint) > maxDistance) || (thirdPoint.DistanceTo(firstPoint) > maxDistance))
+                            { return false; }
+                    //the points in the triangle should not be included, or nothing will come of it.
+                    if (p.DistanceTo(firstPoint) < 0.1 || p.DistanceTo(secondPoint) < 0.1 || p.DistanceTo(thirdPoint) < 0.1)
                     { continue; }
+                    
                     //if there are points inside the sphere, it is not the crust. Do not add geometry
                     if (thisSphere2.IsPointInside(p, 0, true))
                     {

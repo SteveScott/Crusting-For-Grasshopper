@@ -46,7 +46,7 @@ namespace Crusting
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddMeshParameter("Output Mesh", "M", "Output after triangulation.",GH_ParamAccess.item);
+            pManager.AddMeshParameter("Output Mesh", "M", "Output after triangulation.", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -69,15 +69,23 @@ namespace Crusting
                 List<Point3d> thesePoints = new List<Point3d>() { firstPoint, secondPoint, thirdPoint, offsetA, offsetB, offsetC };
                 bool isInside = false;
                 Brep thisSphere2 = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints).ToBrep();
+                if(thisSphere2 == null)
+                    { return false; }
                 foreach (Point3d p in inputPointsLocal)
-                {//the points in the triangle should not be included, or nothing will come of it.
-                    if (p.DistanceTo(firstPoint) < 0.1 && p.DistanceTo(secondPoint) < 0.1 || p.DistanceTo(thirdPoint) < 0.1)
+                {//the points in the triangle should not be included, or nothing will come of it. The offset points are not included in inputPointsLocal so are not counted.
+                    if (p.DistanceTo(firstPoint) < 0.1 ||
+                        p.DistanceTo(secondPoint) < 0.1 ||
+                        p.DistanceTo(thirdPoint) < 0.1
+                        )
                     { continue; }
-                    //if there are points inside the sphere, it is not the crust. Do not add geometry
-                    if (thisSphere2.IsPointInside(p, 0, true))
+                    //if there are points inside the sphere, it is not the crust. Do not add geometry.  
+                    
                     {
-                        isInside = true;
-                        break;
+                        if (thisSphere2.IsPointInside(p, 0, true))
+                        {
+                            isInside = true;
+                            break;
+                        }
                     }
                 }
                 if (!isInside)
@@ -118,61 +126,52 @@ namespace Crusting
                     foreach (Point3d k in inputPoints)
                     {
                         //because it is the order of N^3, we need to reduce the number of points to look at by omitting obviously large triangles that are far apart.
-                        if (i != j && j != k && k != i && i.DistanceTo(j) < maxDistance && j.DistanceTo(k) < maxDistance)
-                        {
-                            var thesePoints = new List<Point3d>();
-                            thesePoints.Add(i);
-                            thesePoints.Add(j);
-                            thesePoints.Add(k);
-                            var fourthPoint = new Point3d(i);
+                        if (i.DistanceTo(j) > maxDistance || j.DistanceTo(k) > maxDistance)
+                        { continue; };
+                        // make sure the point being checked is not a corner of the triang
+                        if (i == j || j == k || k == i)
+                        { continue; };
+                        var thesePoints = new List<Point3d>();
+                        thesePoints.Add(i);
+                        thesePoints.Add(j);
+                        thesePoints.Add(k);
+                        bool isInside = false;
+                        foreach (Point3d p in inputPoints)
+                        {//the points in the triangle should not be included, or nothing will come of it.
+                            if (p == i || p == j || p == k)
+                            { continue; }
+                            //if there are points inside the sphere, it is not the crust. Do not add geometry
+                            //sometimes it draws the sphere in, sometimes it draws the sphere out. Draw it in and out by adding points in the direction of the normal and the reverse of the normal.
+                            rg.Plane thisPlane = new rg.Plane(i, j, k);
+                            Vector3d thisNormal = thisPlane.Normal;
 
-                            Transform xformOut = new Transform();
-                            xformOut.M00 = 1.1;
-                            xformOut.M11 = 1.1;
-                            xformOut.M22 = 1.1;
-                            xformOut.M33 = 1;
-                            
-                            fourthPoint.Transform(xformOut);
-                            
-                            thesePoints.Add(fourthPoint); 
-                            bool isInside = false;
-                            //generate a sphere formed by the three points.
-                            Rhino.Geometry.Brep thisSphere = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints).ToBrep();
-                            foreach (Point3d p in inputPoints)
-                            {//the points in the triangle should not be included, or nothing will come of it.
-                                if (p == i || p == j || p == k)
-                                    { continue; }
-                                //if there are points inside the sphere, it is not the crust. Do not add geometry
-                                //sometimes it draws the sphere in, sometimes it draws the sphere out. Draw it in and out by adding points in the direction of the normal and the reverse of the normal.
-                                rg.Plane thisPlane = new rg.Plane(i, j, k);
-                                Vector3d thisNormal = thisPlane.Normal;
+                            thisNormal = rg.Vector3d.Multiply(thisNormal, 1.001);
+                            var xformIn = Transform.Translation(thisNormal);
 
-                                thisNormal = rg.Vector3d.Multiply(thisNormal, 1.001);
-                                var xformIn = Transform.Translation(thisNormal);
-
-                                thisNormal.Reverse();
-                                var xformOut2 = Transform.Translation(thisNormal);
+                            thisNormal.Reverse();
+                            var xformOut2 = Transform.Translation(thisNormal);
 
 
-                                bool shouldMakeOut = ShouldIMakeATriangle(inputPoints, i, j, k, xformOut2);
-                                bool shouldMakeIn = ShouldIMakeATriangle(inputPoints, i, j, k, xformIn);
-                                if (shouldMakeOut || shouldMakeIn)
-                                {
-                                    Mesh thisTriangle = new Triangle3d(i,j, k).ToMesh();
-                                    outputMeshes.Add(thisTriangle);
-                                }
-                            }
-
-                            if (!isInside)
-                            //it is a crust. Add the face
+                            bool shouldMakeOut = ShouldIMakeATriangle(inputPoints, i, j, k, xformOut2);
+                            bool shouldMakeIn = ShouldIMakeATriangle(inputPoints, i, j, k, xformIn);
+                            if (shouldMakeOut || shouldMakeIn)
                             {
                                 Mesh thisTriangle = new Triangle3d(i, j, k).ToMesh();
                                 outputMeshes.Add(thisTriangle);
                             }
                         }
+
+                        if (!isInside)
+                        //it is a crust. Add the face
+                        {
+                            Mesh thisTriangle = new Triangle3d(i, j, k).ToMesh();
+                            outputMeshes.Add(thisTriangle);
+                        }
                     }
                 }
             }
+        
+    
             answer = new Mesh();
             foreach (Mesh mesh in outputMeshes)
             {
