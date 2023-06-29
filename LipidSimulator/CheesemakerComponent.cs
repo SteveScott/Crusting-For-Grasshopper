@@ -8,7 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-
+using rg = Rhino.Geometry;
 namespace Crusting
 {
     public class CheesemakerComponent : GH_Component
@@ -56,6 +56,39 @@ namespace Crusting
         /// to store data in output parameters.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
+            bool ShouldIMakeATriangle(List<Point3d> inputPointsLocal, Point3d firstPoint, Point3d secondPoint, Point3d thirdPoint, Transform xform)
+            {
+
+                Point3d offsetA = new Point3d(firstPoint);
+                Point3d offsetB = new Point3d(secondPoint);
+                Point3d offsetC = new Point3d(thirdPoint);
+
+                offsetA.Transform(xform);
+                offsetB.Transform(xform);
+                offsetC.Transform(xform);
+                List<Point3d> thesePoints = new List<Point3d>() { firstPoint, secondPoint, thirdPoint, offsetA, offsetB, offsetC };
+                bool isInside = false;
+                Brep thisSphere2 = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints).ToBrep();
+                foreach (Point3d p in inputPointsLocal)
+                {//the points in the triangle should not be included, or nothing will come of it.
+                    if (p.DistanceTo(firstPoint) < 0.1 && p.DistanceTo(secondPoint) < 0.1 || p.DistanceTo(thirdPoint) < 0.1)
+                    { continue; }
+                    //if there are points inside the sphere, it is not the crust. Do not add geometry
+                    if (thisSphere2.IsPointInside(p, 0, true))
+                    {
+                        isInside = true;
+                        break;
+                    }
+                }
+                if (!isInside)
+                {
+                    //it is a crust. Add the face
+                    return true;
+                }
+                else
+                    return false;
+            }
+
             List<double> xs = new List<double>();
             List<double> ys = new List<double>();
             List<double> zs = new List<double>();
@@ -108,12 +141,25 @@ namespace Crusting
                             foreach (Point3d p in inputPoints)
                             {//the points in the triangle should not be included, or nothing will come of it.
                                 if (p == i || p == j || p == k)
-                                    { continue; }   
+                                    { continue; }
                                 //if there are points inside the sphere, it is not the crust. Do not add geometry
-                                if (thisSphere.IsPointInside(p, 0, true))
+                                //sometimes it draws the sphere in, sometimes it draws the sphere out. Draw it in and out by adding points in the direction of the normal and the reverse of the normal.
+                                rg.Plane thisPlane = new rg.Plane(i, j, k);
+                                Vector3d thisNormal = thisPlane.Normal;
+
+                                thisNormal = rg.Vector3d.Multiply(thisNormal, 1.001);
+                                var xformIn = Transform.Translation(thisNormal);
+
+                                thisNormal.Reverse();
+                                var xformOut2 = Transform.Translation(thisNormal);
+
+
+                                bool shouldMakeOut = ShouldIMakeATriangle(inputPoints, i, j, k, xformOut2);
+                                bool shouldMakeIn = ShouldIMakeATriangle(inputPoints, i, j, k, xformIn);
+                                if (shouldMakeOut || shouldMakeIn)
                                 {
-                                    isInside = true;
-                                    break;
+                                    Mesh thisTriangle = new Triangle3d(i,j, k).ToMesh();
+                                    outputMeshes.Add(thisTriangle);
                                 }
                             }
 
