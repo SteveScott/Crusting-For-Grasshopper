@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using Grasshopper.GUI;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Geometry;
 using Grasshopper.Kernel.Geometry.Delaunay;
 using Rhino.Display;
 using Rhino.Geometry;
@@ -33,7 +34,6 @@ namespace Crusting
         {
             pManager.AddMeshParameter("cells", "C", "a collection of tetrahedron cells from the delauney triangulation", GH_ParamAccess.list);
             pManager.AddPointParameter("input", "P", "input points from the delauney cells", GH_ParamAccess.list);
-            pManager.AddNumberParameter("maxDistance", "D", "Maximum polygon face size.", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -57,7 +57,6 @@ namespace Crusting
             var outputMeshes = new List<Mesh>();
             if (!DA.GetDataList(0, inputCells)) return ;
             if (!DA.GetDataList(1, inputPoints)) return ;
-            if(!DA.GetData(2, ref maxDistance)) { maxDistance = double.PositiveInfinity; };
             foreach (Mesh t in inputCells) 
             {  
                 MeshFaceList faces = t.Faces;
@@ -65,38 +64,59 @@ namespace Crusting
 
                 foreach (var face in t.Faces) 
                 {
-                   var firstPoint = vs[face.A];
-                   var secondPoint = vs[face.B];
-                   var thirdPoint = vs[face.C];
-                   Debug.Assert(firstPoint.GetType() == typeof(Point3d), "point is not a Point3d");
-                   if (firstPoint.DistanceTo(secondPoint) < maxDistance && secondPoint.DistanceTo(thirdPoint) < maxDistance)
+                   var firstPoint = new Point3d(vs[face.A]);
+                   var secondPoint = new Point3d(vs[face.B]);
+                   var thirdPoint = new Point3d(vs[face.C]);
+                    //sometimes it draws the sphere in, sometimes it draws the sphere out. Have it always draw out with a fourth point.
+                   var fourthPoint = new Point3d(vs[face.A]);
+                   Transform xformOut = new Transform();
+                    xformOut.M00 = 1.001;
+                    xformOut.M11 = 1.001;
+                    xformOut.M22 = 1.001;
+                    xformOut.M33 = 1;
+
+                    Transform xformIn = new Transform();
+                    xformIn.M00 = 1.001;
+                    xformIn.M11 = 1.001;
+                    xformIn.M22 = 1.001;
+                    xformIn.M33 = 1;
+
+                    bool shouldMakeOut = ShouldIMakeATriangle(inputPoints, firstPoint, secondPoint, thirdPoint, xformOut);
+                    bool shouldMakeIn = ShouldIMakeATriangle(inputPoints, firstPoint, secondPoint, thirdPoint, xformIn);
+                    if (shouldMakeOut || shouldMakeIn)
                     {
-                        continue;
-                    }
-                   var thesePoints2 = new List<Point3d>();
-                   thesePoints2.Add(firstPoint);
-                   thesePoints2.Add(secondPoint);
-                   thesePoints2.Add(thirdPoint);
-                   Rhino.Geometry.Brep thisSphere2 = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints2).ToBrep();
-                   bool isInside = false;
-                   foreach (Point3d p in inputPoints)
-                    {//the points in the triangle should not be included, or nothing will come of it.
-                        if (p.DistanceTo(firstPoint) < 0.1 && p.DistanceTo(secondPoint) < 0.1 || p.DistanceTo(thirdPoint) < 0.1)
-                            { continue; }
-                        //if there are points inside the sphere, it is not the crust. Do not add geometry
-                        if (thisSphere2.IsPointInside(p, 0, true))
-                        {
-                            isInside = true;
-                            break;
-                        }
-                    }
-                   if (!isInside)
-                    {
-                        //it is a crust. Add the face
                         Mesh thisTriangle = new Triangle3d(firstPoint, secondPoint, thirdPoint).ToMesh();
                         outputMeshes.Add(thisTriangle);
                     }
+                    
+                    /*
+                    var thesePoints2 = new List<Point3d>();
+                    thesePoints2.Add(firstPoint);
+                    thesePoints2.Add(secondPoint);
+                    thesePoints2.Add(thirdPoint);
+                    thesePoints2.Add(fourthPoint);
 
+                    Rhino.Geometry.Brep thisSphere2 = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints2).ToBrep();
+                    bool isInside = false;
+                    foreach (Point3d p in inputPoints)
+                     {//the points in the triangle should not be included, or nothing will come of it.
+                         if (p.DistanceTo(firstPoint) < 0.1 && p.DistanceTo(secondPoint) < 0.1 || p.DistanceTo(thirdPoint) < 0.1)
+                             { continue; }
+                         //if there are points inside the sphere, it is not the crust. Do not add geometry
+                         if (thisSphere2.IsPointInside(p, 0, true))
+                         {
+                             isInside = true;
+                             break;
+                         }
+                     }
+
+                    if (!isInside)
+                     {
+                         //it is a crust. Add the face
+                         Mesh thisTriangle = new Triangle3d(firstPoint, secondPoint, thirdPoint).ToMesh();
+                         outputMeshes.Add(thisTriangle);
+                     }
+                     */
 
                 }
                 
@@ -108,6 +128,36 @@ namespace Crusting
                 answer.Append(mesh);
             }
             DA.SetData(0, answer);
+
+            bool ShouldIMakeATriangle(List<Point3d> inputPointsLocal, Point3d firstPoint, Point3d secondPoint, Point3d thirdPoint, Transform xform)
+            {
+                double midX = (firstPoint.X + secondPoint.X + thirdPoint.X) / 3;
+                double midY = (firstPoint.Y + secondPoint.Y + thirdPoint.Y) / 3;
+                double midZ = (firstPoint.Z+ secondPoint.Z + thirdPoint.Z) / 3;
+                Point3d midpoint = new Point3d(midX, midY, midZ);
+                midpoint.Transform(xform);
+                List<Point3d> thesePoints = new List<Point3d>() { firstPoint, secondPoint, thirdPoint, midpoint };
+                bool isInside = false;
+                Brep thisSphere2 = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints).ToBrep();
+                foreach (Point3d p in inputPointsLocal)
+                {//the points in the triangle should not be included, or nothing will come of it.
+                    if (p.DistanceTo(firstPoint) < 0.1 && p.DistanceTo(secondPoint) < 0.1 || p.DistanceTo(thirdPoint) < 0.1)
+                    { continue; }
+                    //if there are points inside the sphere, it is not the crust. Do not add geometry
+                    if (thisSphere2.IsPointInside(p, 0, true))
+                    {
+                        isInside = true;
+                        break;
+                    }
+                }
+                if (!isInside)
+                {
+                    //it is a crust. Add the face
+                    return true;
+                }
+                else
+                    return false;
+            }
         }
 
     /// <summary>
@@ -119,6 +169,8 @@ namespace Crusting
         /// Gets the unique ID for this component. Do not change this ID after release.
         /// </summary>
     public override Guid ComponentGuid =>  new Guid("A1492503-D3F4-454F-839B-05AF4358A3D7"); }
-        
-    
+
+ 
+
+
 }

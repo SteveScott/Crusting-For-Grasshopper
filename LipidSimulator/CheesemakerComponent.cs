@@ -1,6 +1,7 @@
 using Grasshopper;
 using Grasshopper.GUI;
 using Grasshopper.Kernel;
+using Grasshopper.Kernel.Geometry.Delaunay;
 using Grasshopper.Kernel.Special;
 using Rhino.Geometry;
 using System;
@@ -90,7 +91,17 @@ namespace Crusting
                             thesePoints.Add(i);
                             thesePoints.Add(j);
                             thesePoints.Add(k);
+                            var fourthPoint = new Point3d(i);
 
+                            Transform xformOut = new Transform();
+                            xformOut.M00 = 1.1;
+                            xformOut.M11 = 1.1;
+                            xformOut.M22 = 1.1;
+                            xformOut.M33 = 1;
+                            
+                            fourthPoint.Transform(xformOut);
+                            
+                            thesePoints.Add(fourthPoint); 
                             bool isInside = false;
                             //generate a sphere formed by the three points.
                             Rhino.Geometry.Brep thisSphere = Rhino.Geometry.Sphere.FitSphereToPoints(thesePoints).ToBrep();
