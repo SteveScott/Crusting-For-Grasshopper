@@ -24,6 +24,9 @@ namespace Crusting
             "Description",
             "Crusts", "")
         {
+
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
         }
 
         /// <summary>

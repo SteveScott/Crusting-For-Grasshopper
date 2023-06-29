@@ -7,6 +7,7 @@ namespace Crusting
 {
     public class Crusting : GH_AssemblyInfo
     {
+        
         public override string Name => "Cheesemaker";
 
         //Return a 24x24 pixel bitmap to represent this GHA library.
